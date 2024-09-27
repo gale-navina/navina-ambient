@@ -46,7 +46,7 @@ class AssessmentAndPlan(BaseModel):
                                                      description="A list of possible conditions that the patient may have. Aim for multiple options of different hirarchy and specificity.")
     chosen_condition_index: int = Field(...,
                                         description="The index of the chosen condition from the list of possible conditions.")
-    plan: str = Field(..., description="The treatment or follow-up plan for the condition.")
+    plan: str = Field(..., description="Assessment of current condition state and the treatment or follow-up plan if such exists.")
 
 
 class DocumentationResponse(BaseModel):
@@ -123,7 +123,7 @@ async def create_documentation(request: DocumentationRequest):
                     Format the documentation as follows:\n\n
                     1. **HPI**: History of Present Illness, typically 1-2 paragraphs summarizing the patient's current condition and symptoms.\n\n
                     2. **PE**: Physical Examination, summarized in a single paragraph with one row per system reviewed (e.g., cardiovascular, respiratory, etc.).\n\n
-                    3. **Assessment and Plan**: For each condition, begin with the condition name and its corresponding ICD code (if uncertain, provide a list of possible ICD codes). Follow this with a detailed assessment and plan (A&P) for that condition.\n\n
+                    3. **Assessment and Plan**: For each condition, begin with the condition name and its corresponding ICD code (if uncertain, provide a list of possible ICD codes). Follow this with a detailed assessment and plan (A&P) for that condition only if such provided in data.\n\n
                     Use only the following information:\n\n
                     {combined_text}.\n\n
                     Do not add any physical exam, result, diagnosis, or assamet and plan information that is not provided explicitly in the input data.
