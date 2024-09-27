@@ -39,9 +39,6 @@ export const sendAudioChunkToKinesis = async (chunk, streamConfig, recordingId) 
             runtime: 'react-native',
         });
 
-        console.log('Sending audio chunk to Kinesis with the following details:', {
-            streamName: streamConfig.streamName, partitionKey: recordingId, chunkSize: chunk.length,
-        });
 
         const command = new PutRecordCommand({
             Data: chunk,

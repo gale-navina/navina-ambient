@@ -10,6 +10,7 @@ let lastSentTimestamp = 0;
 let recordingDuration = 0;
 
 const recordingOptions = {
+    isMeteringEnabled: true,
     ios: {
         extension: '.wav',
         outputFormat: Audio.IOSOutputFormat.LINEARPCM,
@@ -75,9 +76,16 @@ export const stopRecording = async () => {
     }
 };
 
+export const getRecordingStatus = async () => {
+    if (recording) {
+        return await recording.getStatusAsync();
+    }
+    return null;
+};
+
+
 const sendAudioChunk = async (status, streamConfig, recordingId) => {
     if (!status.isRecording || !streamConfig || !recording) {
-        console.warn('Recording is not active or streamConfig is missing.');
         return;
     }
 
@@ -85,8 +93,6 @@ const sendAudioChunk = async (status, streamConfig, recordingId) => {
 
     try {
         const uri = recording.getURI();
-        console.log('Processing audio file from URI:', uri);
-
         const sampleRate = recordingOptions.ios.sampleRate;
         const numberOfChannels = recordingOptions.ios.numberOfChannels;
         const bitDepth = 16;
@@ -101,8 +107,6 @@ const sendAudioChunk = async (status, streamConfig, recordingId) => {
 
         const chunkLength = Math.min(bytesPerSecond * CHUNK_DURATION / 1000, availableBytes);
 
-        console.log('Reading audio chunk with length:', chunkLength, 'and position:', startPosition);
-
         const chunk = await FileSystem.readAsStringAsync(uri, {
             encoding: FileSystem.EncodingType.Base64,
             length: chunkLength,
@@ -116,26 +120,15 @@ const sendAudioChunk = async (status, streamConfig, recordingId) => {
             runtime: 'react-native',
         });
 
-        console.log('Sending audio chunk to Kinesis with the following details:', {
-            streamName: streamConfig.streamName,
-            partitionKey: recordingId,
-            chunkSize: chunk.length,
-        });
-
         const command = new PutRecordCommand({
             Data: chunk,
             StreamName: streamConfig.streamName,
             PartitionKey: recordingId,
         });
 
-        console.log('before send command')
-
         await kinesisClient.send(command);
 
-        console.log('after send command')
-
         const sentSeconds = chunkLength / bytesPerSecond;
-        console.log('Sent audio chunk with duration:', sentSeconds, 'chunk length:', chunk.length, `bytesPerSecond: ${bytesPerSecond} startPosition: ${startPosition} availableBytes: ${availableBytes}`);
         lastSentTimestamp += sentSeconds * 1000;
 
     } catch (error) {

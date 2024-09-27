@@ -1,70 +1,58 @@
-import React, {useEffect, useRef, useState} from 'react';
+import React, {useEffect, useRef, useState, forwardRef, useImperativeHandle} from 'react';
 import {View, StyleSheet, Animated} from 'react-native';
 import {Mic, MicOff} from 'lucide-react-native';
 import {colors} from '../styles/colors';
 
-const RecordingIndicator = ({isRecording, isPaused}) => {
+const RecordingIndicator = forwardRef(({isRecording, isPaused}, ref) => {
     const [amplitude, setAmplitude] = useState(0);
-    const pulseAnim1 = useRef(new Animated.Value(1)).current;
-    const pulseAnim2 = useRef(new Animated.Value(1)).current;
-    const opacityAnim1 = useRef(new Animated.Value(0.5)).current;
-    const opacityAnim2 = useRef(new Animated.Value(0.3)).current;
+    const outerCircleAnim = useRef(new Animated.Value(1)).current;
+    const middleCircleAnim = useRef(new Animated.Value(1)).current;
+    const opacityAnim = useRef(new Animated.Value(0.5)).current;
+
+    useImperativeHandle(ref, () => ({
+        updateAmplitude: (newAmplitude) => {
+            setAmplitude(Math.max(0, Math.min(1, newAmplitude)));
+        }
+    }));
 
     useEffect(() => {
-        let animation;
-        let amplitudeInterval;
-
         if (isRecording && !isPaused) {
-            const animateCircle = (anim, maxScale) => {
-                const randomDuration = 1500 + Math.random() * 1000; // Random duration between 1.5 and 2.5 seconds
-                const randomScale = 1 + (Math.random() * (maxScale - 1) * amplitude);
+            // Animate outer circle based on full amplitude
+            Animated.spring(outerCircleAnim, {
+                toValue: 1 + amplitude * 0.5, // Max 50% larger
+                friction: 5,
+                tension: 40,
+                useNativeDriver: true,
+            }).start();
 
-                return Animated.timing(anim, {
-                    toValue: randomScale,
-                    duration: randomDuration,
-                    useNativeDriver: true,
-                });
-            };
-
-            const startAnimation = () => {
-                animation = Animated.parallel([
-                    animateCircle(pulseAnim1, 1.3),
-                    animateCircle(pulseAnim2, 1.5),
-                ]);
-                animation.start((({finished}) => {
-                    if (finished) {
-                        pulseAnim1.setValue(1);
-                        pulseAnim2.setValue(1);
-                        startAnimation();
-                    }
-                }));
-            };
-
-            startAnimation();
-
-            // Simulate amplitude changes (replace this with real amplitude data later)
-            amplitudeInterval = setInterval(() => {
-                setAmplitude(Math.random());
-            }, 2000);
+            // Animate middle circle to a random size between inner and max amplitude
+            const randomScale = 1 + Math.random() * amplitude * 0.5;
+            Animated.spring(middleCircleAnim, {
+                toValue: randomScale,
+                friction: 5,
+                tension: 40,
+                useNativeDriver: true,
+            }).start();
         } else {
-            pulseAnim1.setValue(1);
-            pulseAnim2.setValue(1);
+            // Reset animations when not recording
+            Animated.parallel([
+                Animated.spring(outerCircleAnim, {
+                    toValue: 1,
+                    friction: 3,
+                    tension: 40,
+                    useNativeDriver: true,
+                }),
+                Animated.spring(middleCircleAnim, {
+                    toValue: 1,
+                    friction: 3,
+                    tension: 40,
+                    useNativeDriver: true,
+                }),
+            ]).start();
         }
+    }, [isRecording, isPaused, amplitude]);
 
-        return () => {
-            if (animation) {
-                animation.stop();
-            }
-            if (amplitudeInterval) {
-                clearInterval(amplitudeInterval);
-            }
-        };
-    }, [isRecording, isPaused, amplitude, pulseAnim1, pulseAnim2]);
-
-    // Function to update amplitude (to be called from parent component)
-    const updateAmplitude = (newAmplitude) => {
-        setAmplitude(Math.max(0, Math.min(1, newAmplitude))); // Ensure amplitude is between 0 and 1
-    };
+    const innerCircleSize = 120; // Base size of the circles
 
     return (
         <View style={styles.container}>
@@ -72,8 +60,10 @@ const RecordingIndicator = ({isRecording, isPaused}) => {
                 style={[
                     styles.outerCircle,
                     {
-                        transform: [{scale: pulseAnim2}],
-                        opacity: opacityAnim2,
+                        width: innerCircleSize,
+                        height: innerCircleSize,
+                        transform: [{scale: outerCircleAnim}],
+                        opacity: opacityAnim,
                     },
                 ]}
             />
@@ -81,12 +71,14 @@ const RecordingIndicator = ({isRecording, isPaused}) => {
                 style={[
                     styles.middleCircle,
                     {
-                        transform: [{scale: pulseAnim1}],
-                        opacity: opacityAnim1,
+                        width: innerCircleSize,
+                        height: innerCircleSize,
+                        transform: [{scale: middleCircleAnim}],
+                        opacity: opacityAnim,
                     },
                 ]}
             />
-            <View style={styles.innerCircle}>
+            <View style={[styles.innerCircle, {width: innerCircleSize, height: innerCircleSize}]}>
                 {isRecording && !isPaused ? (
                     <Mic color={colors.primary} size={48}/>
                 ) : (
@@ -95,30 +87,26 @@ const RecordingIndicator = ({isRecording, isPaused}) => {
             </View>
         </View>
     );
-};
+});
 
 const styles = StyleSheet.create({
     container: {
         alignItems: 'center',
         justifyContent: 'center',
+        width: 200,
+        height: 200,
     },
     outerCircle: {
         position: 'absolute',
-        width: 150,
-        height: 150,
-        borderRadius: 75,
+        borderRadius: 60,
         backgroundColor: colors.white,
     },
     middleCircle: {
         position: 'absolute',
-        width: 130,
-        height: 130,
-        borderRadius: 65,
+        borderRadius: 60,
         backgroundColor: colors.white,
     },
     innerCircle: {
-        width: 120,
-        height: 120,
         borderRadius: 60,
         backgroundColor: colors.white,
         justifyContent: 'center',

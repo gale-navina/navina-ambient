@@ -12,7 +12,8 @@ import {
     resumeRecording,
     stopRecording,
     getRecordingDuration,
-    getCurrentTimestamp
+    getCurrentTimestamp,
+    getRecordingStatus
 } from '../services/audioRecording';
 import {notifyRecordingStatus} from '../services/api';
 import {formatTime} from '../utils/timeFormatter';
@@ -24,6 +25,7 @@ const RecordingScreen = ({navigation, route}) => {
     const [connectionStatus, setConnectionStatus] = useState('disconnected');
     const {sessionInfo, recordingId, streamConfig} = route.params;
     const recordingIndicatorRef = useRef(null);
+    const intervalRef = useRef(null);
 
     useEffect(() => {
         const initializeRecording = async () => {
@@ -32,6 +34,7 @@ const RecordingScreen = ({navigation, route}) => {
                 setIsRecording(true);
                 setConnectionStatus('connected');
                 notifyRecordingStatus(sessionInfo.sessionId, recordingId, 'start', getCurrentTimestamp());
+                startDurationUpdate();
             } else {
                 Alert.alert('Error', 'Failed to start recording. Please try again.');
                 navigation.goBack();
@@ -42,32 +45,53 @@ const RecordingScreen = ({navigation, route}) => {
 
         return () => {
             stopRecording();
+            if (intervalRef.current) {
+                clearInterval(intervalRef.current);
+            }
         };
     }, []);
 
-    useEffect(() => {
-        let interval;
-        if (isRecording && !isPaused) {
-            interval = setInterval(() => {
-                setRecordingDuration(getRecordingDuration());
-                // Simulate amplitude update (replace with real amplitude data later)
-                if (recordingIndicatorRef.current) {
-                    recordingIndicatorRef.current.updateAmplitude(Math.random());
+
+    const normalizeAmplitude = (db) => {
+        const minDb = -30;  // Quiet environment
+        const maxDb = -10;  // Loud sound (adjust if needed)
+        const clampedDb = Math.min(Math.max(db, minDb), maxDb);
+        return (clampedDb - minDb) / (maxDb - minDb);
+    };
+
+    const startDurationUpdate = () => {
+        intervalRef.current = setInterval(async () => {
+            const status = await getRecordingStatus();
+            if (status) {
+                setRecordingDuration(status.durationMillis);
+                if (recordingIndicatorRef.current && status.metering !== undefined) {
+
+                    let normalizedAmplitude = normalizeAmplitude(status.metering);
+                    normalizedAmplitude = Math.pow(normalizedAmplitude, 0.5);
+
+                    // We're no longer applying the boost here, as the RecordingIndicator
+                    // now handles the scaling internally
+
+                    recordingIndicatorRef.current.updateAmplitude(normalizedAmplitude);
                 }
-            }, 1000);
-        }
-        return () => clearInterval(interval);
-    }, [isRecording, isPaused]);
+            }
+        }, 100);
+    };
+
 
     const handlePauseResume = useCallback(async () => {
         if (isPaused) {
             await resumeRecording();
             setIsPaused(false);
             notifyRecordingStatus(sessionInfo.sessionId, recordingId, 'resume', getCurrentTimestamp());
+            startDurationUpdate();
         } else {
             await pauseRecording();
             setIsPaused(true);
             notifyRecordingStatus(sessionInfo.sessionId, recordingId, 'pause', getCurrentTimestamp());
+            if (intervalRef.current) {
+                clearInterval(intervalRef.current);
+            }
         }
     }, [isPaused, sessionInfo, recordingId]);
 
@@ -75,6 +99,9 @@ const RecordingScreen = ({navigation, route}) => {
         await stopRecording();
         notifyRecordingStatus(sessionInfo.sessionId, recordingId, 'stop', getCurrentTimestamp());
         setConnectionStatus('disconnected');
+        if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+        }
         navigation.replace('Summary', {duration: recordingDuration});
     }, [recordingDuration, navigation, sessionInfo, recordingId]);
 
