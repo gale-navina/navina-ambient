@@ -91,14 +91,12 @@ const styles = StyleSheet.create({
         fontSize: 16,
         color: colors.white,
         textAlign: 'center',
-        marginVertical: 20,
         paddingHorizontal: 20,
     },
     infoContainer: {
         flexDirection: 'row',
         justifyContent: 'space-around',
         width: '100%',
-        marginVertical: 30,
     },
     infoItem: {
         alignItems: 'center',

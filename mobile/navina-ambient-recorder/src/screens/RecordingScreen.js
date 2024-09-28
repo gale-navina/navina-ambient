@@ -102,7 +102,7 @@ const RecordingScreen = ({navigation, route}) => {
         if (intervalRef.current) {
             clearInterval(intervalRef.current);
         }
-        navigation.replace('Summary', {duration: recordingDuration});
+        navigation.replace('Summary', {duration: Math.floor(recordingDuration / 1000)});
     }, [recordingDuration, navigation, sessionInfo, recordingId]);
 
     return (
