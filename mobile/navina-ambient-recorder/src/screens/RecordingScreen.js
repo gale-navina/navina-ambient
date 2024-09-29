@@ -6,15 +6,7 @@ import {globalStyles} from '../styles/globalStyles';
 import RecordingIndicator from '../components/RecordingIndicator';
 import ControlButton from '../components/ControlButton';
 import {LinearGradient} from 'expo-linear-gradient';
-import {
-    startRecording,
-    pauseRecording,
-    resumeRecording,
-    stopRecording,
-    getRecordingDuration,
-    getCurrentTimestamp,
-    getRecordingStatus
-} from '../services/audioRecording';
+import RecordingManager from '../services/audioRecording'; // Updated import
 import {notifyRecordingStatus} from '../services/api';
 import {formatTime} from '../utils/timeFormatter';
 
@@ -27,13 +19,19 @@ const RecordingScreen = ({navigation, route}) => {
     const recordingIndicatorRef = useRef(null);
     const intervalRef = useRef(null);
 
+    // Reference to the RecordingManager instance
+    const recordingManagerRef = useRef(null);
+
     useEffect(() => {
         const initializeRecording = async () => {
-            const success = await startRecording(sessionInfo, recordingId, streamConfig);
+            const manager = new RecordingManager(streamConfig, recordingId);
+            recordingManagerRef.current = manager;
+
+            const success = await manager.startRecording();
             if (success) {
                 setIsRecording(true);
                 setConnectionStatus('connected');
-                notifyRecordingStatus(sessionInfo.sessionId, recordingId, 'start', getCurrentTimestamp());
+                notifyRecordingStatus(sessionInfo.sessionId, recordingId, 'start', manager.getCurrentTimestamp());
                 startDurationUpdate();
             } else {
                 Alert.alert('Error', 'Failed to start recording. Please try again.');
@@ -44,13 +42,14 @@ const RecordingScreen = ({navigation, route}) => {
         initializeRecording();
 
         return () => {
-            stopRecording();
+            if (recordingManagerRef.current) {
+                recordingManagerRef.current.stopRecording();
+            }
             if (intervalRef.current) {
                 clearInterval(intervalRef.current);
             }
         };
     }, []);
-
 
     const normalizeAmplitude = (db) => {
         const minDb = -30;  // Quiet environment
@@ -59,51 +58,65 @@ const RecordingScreen = ({navigation, route}) => {
         return (clampedDb - minDb) / (maxDb - minDb);
     };
 
-    const startDurationUpdate = () => {
-        intervalRef.current = setInterval(async () => {
-            const status = await getRecordingStatus();
-            if (status) {
-                setRecordingDuration(status.durationMillis);
-                if (recordingIndicatorRef.current && status.metering !== undefined) {
-
-                    let normalizedAmplitude = normalizeAmplitude(status.metering);
-                    normalizedAmplitude = Math.pow(normalizedAmplitude, 0.5);
-
-                    // We're no longer applying the boost here, as the RecordingIndicator
-                    // now handles the scaling internally
-
-                    recordingIndicatorRef.current.updateAmplitude(normalizedAmplitude);
-                }
-            }
-        }, 100);
-    };
-
-
     const handlePauseResume = useCallback(async () => {
+        if (!recordingManagerRef.current) return;
+
         if (isPaused) {
-            await resumeRecording();
+            await recordingManagerRef.current.resume(); // Await resume()
             setIsPaused(false);
-            notifyRecordingStatus(sessionInfo.sessionId, recordingId, 'resume', getCurrentTimestamp());
-            startDurationUpdate();
+            notifyRecordingStatus(
+                sessionInfo.sessionId,
+                recordingId,
+                'resume',
+                recordingManagerRef.current.getCurrentTimestamp()
+            );
         } else {
-            await pauseRecording();
+            await recordingManagerRef.current.pause(); // Await pause()
             setIsPaused(true);
-            notifyRecordingStatus(sessionInfo.sessionId, recordingId, 'pause', getCurrentTimestamp());
-            if (intervalRef.current) {
-                clearInterval(intervalRef.current);
-            }
+            notifyRecordingStatus(
+                sessionInfo.sessionId,
+                recordingId,
+                'pause',
+                recordingManagerRef.current.getCurrentTimestamp()
+            );
         }
     }, [isPaused, sessionInfo, recordingId]);
 
     const handleStop = useCallback(async () => {
-        await stopRecording();
-        notifyRecordingStatus(sessionInfo.sessionId, recordingId, 'stop', getCurrentTimestamp());
+        if (!recordingManagerRef.current) return;
+
+        await recordingManagerRef.current.stopRecording();
+        notifyRecordingStatus(
+            sessionInfo.sessionId,
+            recordingId,
+            'stop',
+            recordingManagerRef.current.getCurrentTimestamp()
+        );
         setConnectionStatus('disconnected');
         if (intervalRef.current) {
             clearInterval(intervalRef.current);
         }
         navigation.replace('Summary', {duration: Math.floor(recordingDuration / 1000)});
     }, [recordingDuration, navigation, sessionInfo, recordingId]);
+
+    const startDurationUpdate = () => {
+        intervalRef.current = setInterval(async () => {
+            try {
+                const status = await recordingManagerRef.current.getRecordingStatus();
+                if (status) {
+                    setRecordingDuration(status.durationMillis);
+                    if (recordingIndicatorRef.current && status.metering !== undefined) {
+                        let normalizedAmplitude = normalizeAmplitude(status.metering);
+                        normalizedAmplitude = Math.pow(normalizedAmplitude, 0.5);
+
+                        recordingIndicatorRef.current.updateAmplitude(normalizedAmplitude);
+                    }
+                }
+            } catch (error) {
+                console.error('Error in startDurationUpdate:', error);
+            }
+        }, 250); // Update UI every 250ms
+    };
 
     return (
         <SafeAreaView style={styles.safeArea}>
