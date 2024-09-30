@@ -16,6 +16,7 @@ kinesis_client = boto3.client('kinesis',
                               aws_access_key_id=AWS_ACCESS_KEY_ID,
                               aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
 
+SECONDS_BEFORE_SEARCH = 120
 
 async def get_kinesis_shard_iterator(session_id: str, recording_id: str, redis_client: aioredis.Redis,
                                      max_retries: int = 30, delay: int = 2):
@@ -23,7 +24,7 @@ async def get_kinesis_shard_iterator(session_id: str, recording_id: str, redis_c
     if start_time_str is None:
         raise ValueError(f"Start time not found for recording_id: {recording_id}")
 
-    start_time = float(start_time_str) - 60
+    start_time = float(start_time_str) - SECONDS_BEFORE_SEARCH
     logger.info(
         f"Searching for shard iterator from start time: {start_time} for session_id={session_id}, recording_id={recording_id}")
 
