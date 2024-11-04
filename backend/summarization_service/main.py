@@ -1,13 +1,25 @@
 import os
-from typing import List, Optional
+from typing import List, Optional, Any
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 
 from pydantic import BaseModel, Field
 from openai import OpenAI
 from logger import logger
 
+from auto_documentation.types import AssessmentResponse
+from auto_documentation.documentation import document_raw_summary_request
+
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # or specify domains ['http://localhost:3000']
+    allow_credentials=True,
+    allow_methods=["*"],  # or just ['POST']
+    allow_headers=["*"],
+)
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
@@ -46,7 +58,18 @@ class AssessmentAndPlan(BaseModel):
                                                      description="A list of possible conditions that the patient may have. Aim for multiple options of different hirarchy and specificity.")
     chosen_condition_index: int = Field(...,
                                         description="The index of the chosen condition from the list of possible conditions.")
-    plan: str = Field(..., description="Assessment of current condition state and the treatment or follow-up plan if such exists.")
+    plan: str = Field(...,
+                      description="Assessment of current condition state and the treatment or follow-up plan if such exists.")
+
+
+class RecommendationResponse(BaseModel):
+    recommendations: List[AssessmentAndPlan] = Field(...,
+                                                     description="List of possible conditions that the patient may have. Aim for multiple options of different hirarchy and specificity.")
+
+
+class AutoDocumentationResponse(BaseModel):
+    diagnosis: ConditionOption = Field(..., description="The diagnosis for the patient.")
+    assessment: str = Field(..., description="Assessment of the patient's current condition.")
 
 
 class DocumentationResponse(BaseModel):
@@ -64,6 +87,15 @@ class DocumentationRequest(BaseModel):
     summaries: List[str]
 
 
+class SuggestionsDocumentationRequest(BaseModel):
+    suggestions: List[Any]
+    base_labs: List[Any]
+    all_labs: List[Any]
+    meds: List[Any]
+    family_history: List[Any]
+    social_history: Optional[Any] = None
+
+
 @app.post("/summarize", response_model=SummarizationResponse)
 async def summarize_transcription(request: SummarizationRequest):
     try:
@@ -76,7 +108,7 @@ async def summarize_transcription(request: SummarizationRequest):
                 {"role": "user",
                  "content": f"""
                  Create a medical transcript summary that preserves the content discussed during the visit and the medical notes by the doctor.\n\n 
-                 Provide simple text with concice summary that includes all parts of the visit up to 10 sentences.\n\n 
+                 Provide simple text with concice summary that includes all parts of the visit up to 20 sentences.\n\n 
                  Use Only the following data:\n\n{combined_text}\n\n
                  Do not add any information that is not provided in the input data.
                  Prefer short or empty response if input data is not sufficient for a summary.
@@ -94,6 +126,37 @@ async def summarize_transcription(request: SummarizationRequest):
         return structured_summary
     except Exception as e:
         logger.error(f"Error summarizing transcription: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/infer_new_conditions", response_model=RecommendationResponse)
+async def infer_new_conditions(request: SummarizationRequest):
+    try:
+        response = client.beta.chat.completions.parse(
+            model="gpt-4o-2024-08-06",
+            messages=[
+                {"role": "system",
+                 "content": "You are a medical assistant tasked with documenting given medical data for conditions and treatment plans if the plan was established by a doctor."},
+                {"role": "user",
+                 "content": f"""
+                 For the main new condition / conditions that where mentioned during this medical session:
+                 For each condition, assign a condition name and its corresponding ICD code (if uncertain, provide a list of possible ICD codes). 
+                 Follow this with a detailed assessment for that condition and the treatment plan only if such provided in data by the doctor.\n\n
+                 {request.transcription}\n\nNotes:\n{request.notes}
+                 Do not add any information that is not provided in the input data, if no plan is provided by the doctor, include only assessment of current condition state.
+                 """
+                 }
+            ],
+            response_format=RecommendationResponse,
+            max_tokens=300,
+            n=1,
+            stop=None,
+            temperature=0
+        )
+        structured_response = response.choices[0].message.parsed
+        return structured_response
+    except Exception as e:
+        logger.error(f"Error inferring new conditions: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -143,4 +206,17 @@ async def create_documentation(request: DocumentationRequest):
 
     except Exception as e:
         logger.error(f"Error creating documentation: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/suggestions_documentation")
+async def document_suggestions(request: SuggestionsDocumentationRequest):
+    try:
+        print('start document_suggestions')
+        raw_data = request.model_dump()
+        print('successfully dumped model')
+        return await document_raw_summary_request(raw_summary_data=raw_data)
+
+    except Exception as e:
+        logger.error(f"Error suggesting documentation: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

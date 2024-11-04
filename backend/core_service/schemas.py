@@ -72,10 +72,17 @@ class SessionStatus(str, enum.Enum):
     FAILED = "failed"
 
 
+class Recommendation(BaseModel):
+    id: str
+    session_id: str
+    content: dict
+
+
 class Session(BaseModel):
     id: str
     transcription: Optional[str] = None
     summary: Optional[List[SummaryItem]] = []
+    recommendations: Optional[List[Recommendation]] = []
     status: SessionStatus
     created_at: datetime
     notes: List[Note] = []
@@ -116,6 +123,10 @@ class AssessmentAndPlan(BaseModel):
                 # Set the default title using the selected option's name and ICD code
                 values['title'] = f"{selected_option['name']} ({selected_option['icd_code']})"
         return values
+
+
+class RecommendationResponse(BaseModel):
+    recommendations: List[AssessmentAndPlan]
 
 
 class DocumentationResponse(BaseModel):

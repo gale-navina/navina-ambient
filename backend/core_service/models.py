@@ -25,6 +25,7 @@ class Session(Base):
     visit = relationship("Visit", back_populates="sessions")
     notes = relationship("Note", back_populates="session")
     summary = relationship("SummaryItem", back_populates="session")
+    recommendations = relationship("Recommendation", back_populates="session")
     recording = relationship("Recording", back_populates="session", uselist=False)
 
 
@@ -67,3 +68,11 @@ class Recording(Base):
     status = Column(Enum(schemas.RecordingStatus), default=schemas.RecordingStatus.INITIALIZED)
     created_at = Column(DateTime, default=datetime.utcnow)
     session = relationship("Session", back_populates="recording", uselist=False)
+
+
+class Recommendation(Base):
+    __tablename__ = "recommendations"
+    id = Column(String, primary_key=True, index=True, default=lambda: str(uuid.uuid4()))
+    session_id = Column(String, ForeignKey("sessions.id"))
+    content = Column(JSON)
+    session = relationship("Session", back_populates="recommendations")

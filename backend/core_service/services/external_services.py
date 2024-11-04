@@ -4,7 +4,7 @@ from fastapi import HTTPException
 from typing import Optional, List
 from aioredis import Redis
 from pydantic import BaseModel, Field
-from schemas import SummaryResponse, DocumentationResponse
+from schemas import SummaryResponse, DocumentationResponse, RecommendationResponse
 
 AUDIO_PROCESSING_SERVICE_URL = os.getenv('AUDIO_PROCESSING_SERVICE_URL', 'http://localhost:8001')
 SUMMARIZATION_SERVICE_URL = os.getenv('SUMMARIZATION_SERVICE_URL', 'http://localhost:8002')
@@ -42,6 +42,20 @@ async def generate_summary(transcription: str, notes: list[str]) -> SummaryRespo
                 f"{SUMMARIZATION_SERVICE_URL}/summarize",
                 json={"transcription": transcription, "notes": notes}
             )
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            raise HTTPException(status_code=500, detail=f"Summarization service error: {str(e)}")
+
+
+async def generate_recommendations(transcription: str, notes: list[str]) -> RecommendationResponse:
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(
+                f"{SUMMARIZATION_SERVICE_URL}/infer_new_conditions",
+                json={"transcription": transcription, "notes": notes}
+            )
+            print('Got recommendations response:', response.json())
             response.raise_for_status()
             return response.json()
         except httpx.HTTPStatusError as e:

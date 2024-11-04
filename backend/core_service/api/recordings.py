@@ -3,9 +3,11 @@ from sqlalchemy.orm import Session
 from database import get_db
 import models, schemas
 from utils.general import get_redis
-from services.external_services import update_audio_processing, get_transcription, generate_summary
+from services.external_services import update_audio_processing, get_transcription, generate_summary, \
+    generate_recommendations
 
 router = APIRouter()
+CREATE_RECOMMENDATIONS = False
 
 
 @router.post("/recording", response_model=schemas.RecordingBase)
@@ -65,6 +67,10 @@ async def create_summary(session_id: str, recording_id: str, db: Session = Depen
 
     # Generate summary
     summary_data = await generate_summary(transcription_data["transcription"], note_contents)
+    if CREATE_RECOMMENDATIONS:
+        recommendations_data = await generate_recommendations(transcription_data["transcription"], note_contents)
+        recommendations_summary = [models.Recommendation(content=item, session_id=session_id) for item in
+                                   recommendations_data["recommendations"]]
 
     # Save summary to database
     session = db.query(models.Session).filter(models.Session.id == session_id).first()  # type: ignore
@@ -72,6 +78,8 @@ async def create_summary(session_id: str, recording_id: str, db: Session = Depen
         raise HTTPException(status_code=404, detail="Session not found")
 
     session.summary = summary_data["summary"]
+    if CREATE_RECOMMENDATIONS:
+        session.recommendations = recommendations_summary
     db.commit()
 
     return schemas.SummaryResponse(summary=summary_data["summary"])

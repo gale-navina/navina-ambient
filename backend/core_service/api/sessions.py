@@ -6,9 +6,11 @@ from database import get_db
 import models, schemas
 from utils.general import get_redis, generate_token
 from logger import logger
-from services.external_services import get_processing_status, get_transcription, generate_summary
+from services.external_services import get_processing_status, get_transcription, generate_summary, \
+    generate_recommendations
 
 router = APIRouter()
+CREATE_RECOMMENDATIONS = False
 
 
 @router.post("/sessions", response_model=schemas.SessionResponse)
@@ -87,15 +89,24 @@ async def process_session_completion(session_id: str, recording_exists: bool, db
 
         # Generate summary
         summary_data = await generate_summary(transcription_data["transcription"], note_contents)
-        summpary_items = [models.SummaryItem(content=item, session_id=session_id) for item in summary_data["summary"]]
+        print('Received Summary Data:', summary_data)
+        summary_items = [models.SummaryItem(content=item, session_id=session_id) for item in summary_data["summary"]]
+
+        if CREATE_RECOMMENDATIONS:
+            recommendations_data = await generate_recommendations(transcription_data["transcription"], note_contents)
+            print('Received Recommendation Data:', recommendations_data)
+            summary_recommendations = [models.Recommendation(content=item, session_id=session_id) for item in
+                                       recommendations_data["recommendations"]]
 
         # Update session in database
         logger.info(f"Updating session {session_id} with transcription and summary in database")
         db_session = db.query(models.Session).filter(models.Session.id == session_id).first()
         db_session.status = schemas.SessionStatus.COMPLETED
         db_session.transcription = transcription_data["transcription"]
-        db_session.summary = summpary_items
-        logger.info(f"Session new summary: {[item.content for item in summpary_items]}")
+        db_session.summary = summary_items
+        if CREATE_RECOMMENDATIONS:
+            db_session.recommendations = summary_recommendations
+        logger.info(f"Session new summary: {[item.content for item in summary_items]}")
         db.commit()
 
         logger.info(f"Session {session_id} completed successfully")
