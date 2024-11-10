@@ -21,7 +21,9 @@ async def create_documentation(documentation_request: schemas.DocumentationCreat
         all_notes = [note.content for session in db_visit.sessions for note in session.notes]
         all_transcriptions = [session.transcription for session in db_visit.sessions if session.transcription]
         all_summaries = [item.content for session in db_visit.sessions for item in session.summary]
-        documentation_ext_response = await create_documentation_external(all_notes, all_transcriptions, all_summaries)
+        current_condition = documentation_request.current_conditions
+        documentation_ext_response = await create_documentation_external(all_notes, all_transcriptions, all_summaries,
+                                                                         current_condition)
     db_documentation = models.Documentation(visit_id=db_visit.id, **documentation_ext_response.dict())
     db.add(db_documentation)
     db.commit()

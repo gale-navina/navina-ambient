@@ -26,6 +26,7 @@ python-multipart = "^0.0.9"
 soundfile = "^0.12.1"
 alembic = "^1.13.2"
 jose = "^1.0.0"
+pandera = "^0.20.4"
 
 
 [tool.poetry.group.dev.dependencies]

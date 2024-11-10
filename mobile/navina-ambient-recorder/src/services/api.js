@@ -1,8 +1,8 @@
 import 'react-native-get-random-values';
 import {KinesisClient, PutRecordCommand} from "@aws-sdk/client-kinesis";
 
-const CORE_SERVICE_URL = 'http://192.168.68.103:8000';
-const LOCAL_AWS_ENDPOINT = 'http://192.168.68.103:4566';
+const CORE_SERVICE_URL = 'http://172.20.4.45:8000';
+const LOCAL_AWS_ENDPOINT = 'http://172.20.4.45:4566';
 
 export const pairDevice = async (sessionId, token) => {
     const response = await fetch(`${CORE_SERVICE_URL}/pair`, {

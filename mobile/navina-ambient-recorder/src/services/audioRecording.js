@@ -2,7 +2,7 @@ import {Audio} from 'expo-av';
 import * as FileSystem from 'expo-file-system';
 import {KinesisClient, PutRecordCommand} from "@aws-sdk/client-kinesis";
 
-const LOCAL_AWS_ENDPOINT = 'http://192.168.68.103:4566';
+const LOCAL_AWS_ENDPOINT = 'http://172.20.4.45:4566';
 
 const recordingOptions = {
     isMeteringEnabled: true,

@@ -4,7 +4,7 @@ from fastapi import HTTPException
 from typing import Optional, List
 from aioredis import Redis
 from pydantic import BaseModel, Field
-from schemas import SummaryResponse, DocumentationResponse, RecommendationResponse
+from schemas import SummaryResponse, DocumentationResponse, RecommendationResponse, DocumentedCondition
 
 AUDIO_PROCESSING_SERVICE_URL = os.getenv('AUDIO_PROCESSING_SERVICE_URL', 'http://localhost:8001')
 SUMMARIZATION_SERVICE_URL = os.getenv('SUMMARIZATION_SERVICE_URL', 'http://localhost:8002')
@@ -38,13 +38,16 @@ async def get_transcription(session_id: str, recording_id: str, redis: Redis) ->
 async def generate_summary(transcription: str, notes: list[str]) -> SummaryResponse:
     async with httpx.AsyncClient() as client:
         try:
+            print('Sending request to summarization service:', transcription, notes)
             response = await client.post(
                 f"{SUMMARIZATION_SERVICE_URL}/summarize",
                 json={"transcription": transcription, "notes": notes}
             )
+            print('Got summary response:', response)
             response.raise_for_status()
             return response.json()
         except httpx.HTTPStatusError as e:
+            print('Summarization service error:', str(e))
             raise HTTPException(status_code=500, detail=f"Summarization service error: {str(e)}")
 
 
@@ -101,7 +104,8 @@ async def update_audio_processing(session_id: str, recording_id: str, action: st
 
 
 async def create_documentation(transcriptions: List[str], notes: List[str],
-                               summaries: List[str]) -> DocumentationResponse:
+                               summaries: List[str],
+                               current_conditions: List[DocumentedCondition]) -> DocumentationResponse:
     async with httpx.AsyncClient() as client:
         try:
             response = await client.post(
@@ -109,7 +113,9 @@ async def create_documentation(transcriptions: List[str], notes: List[str],
                 json={
                     "transcriptions": transcriptions,
                     "notes": notes,
-                    "summaries": summaries
+                    "summaries": summaries,
+                    "current_conditions": [cc.model_dump() for cc in current_conditions]
+
                 },
                 timeout=httpx.Timeout(15.0)
             )

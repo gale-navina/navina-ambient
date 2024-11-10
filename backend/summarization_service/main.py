@@ -38,6 +38,12 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
+class DocumentedCondition(BaseModel):
+    condition: str = Field(..., description="The name of the condition.")
+    icd_code: str = Field(..., description="The ICD code for the condition.")
+    current_anp: str = Field(..., description="The current assessment and plan for the condition.")
+
+
 class SummarizationRequest(BaseModel):
     transcription: str
     notes: List[str] = []
@@ -58,8 +64,10 @@ class AssessmentAndPlan(BaseModel):
                                                      description="A list of possible conditions that the patient may have. Aim for multiple options of different hirarchy and specificity.")
     chosen_condition_index: int = Field(...,
                                         description="The index of the chosen condition from the list of possible conditions.")
-    plan: str = Field(...,
-                      description="Assessment of current condition state and the treatment or follow-up plan if such exists.")
+    assessment_and_plan: str = Field(...,
+                                     description="Assessment of current condition state and the treatment or follow-up plan if such exists. If already documented, only include new text that will be appended to the existing documentation.")
+    already_documented: bool = Field(...,
+                                     description="Whether the condition is already documented in the patient's record.")
 
 
 class RecommendationResponse(BaseModel):
@@ -85,6 +93,7 @@ class DocumentationRequest(BaseModel):
     transcriptions: List[str]
     notes: List[str]
     summaries: List[str]
+    current_conditions: List[DocumentedCondition]
 
 
 class SuggestionsDocumentationRequest(BaseModel):
@@ -100,6 +109,7 @@ class SuggestionsDocumentationRequest(BaseModel):
 async def summarize_transcription(request: SummarizationRequest):
     try:
         combined_text = f"{request.transcription}\n\nNotes:\n" + "\n".join(request.notes)
+        print("sending request to openai")
         response = client.beta.chat.completions.parse(
             model="gpt-4o-2024-08-06",
             messages=[
@@ -121,6 +131,7 @@ async def summarize_transcription(request: SummarizationRequest):
             stop=None,
             temperature=0
         )
+        print('Got response:', response.choices[0].message.parsed)
 
         structured_summary = response.choices[0].message.parsed
         return structured_summary
@@ -163,14 +174,24 @@ async def infer_new_conditions(request: SummarizationRequest):
 @app.post("/create_documentation", response_model=DocumentationResponse)
 async def create_documentation(request: DocumentationRequest):
     try:
-        combined_text = "\n\n".join([
-            "Transcriptions:",
+        combined_text = "\n".join([
+            "Visit Transcriptions:",
             *request.transcriptions,
-            "Notes:",
+            "\n",
+            "Visit Notes:",
             *request.notes,
-            "Summaries:",
-            *request.summaries
+            "\n",
+            "Visit Summaries:",
+            *request.summaries,
+            "\n",
+            "Current Documented Conditions To Include:",
+            *[
+                f"Condition: {condition.condition} | ICD Code: {condition.icd_code} | Current Assessment: {condition.current_anp}"
+                for condition in
+                request.current_conditions]
         ])
+
+        print("sending request to openai", combined_text)
 
         response = client.beta.chat.completions.parse(
             model="gpt-4o-2024-08-06",
@@ -186,10 +207,11 @@ async def create_documentation(request: DocumentationRequest):
                     Format the documentation as follows:\n\n
                     1. **HPI**: History of Present Illness, typically 1-2 paragraphs summarizing the patient's current condition and symptoms.\n\n
                     2. **PE**: Physical Examination, summarized in a single paragraph with one row per system reviewed (e.g., cardiovascular, respiratory, etc.).\n\n
-                    3. **Assessment and Plan**: For each condition, begin with the condition name and its corresponding ICD code (if uncertain, provide a list of possible ICD codes). Follow this with a detailed assessment and plan (A&P) for that condition only if such provided in data.\n\n
+                    3. **Assessment and Plan**:  Create a list of all patients conditions rather they are already documented or aride from new data. For not documented condition: include condition name and its corresponding ICD code (if uncertain, provide a list of possible ICD codes). Follow this with a detailed assessment for that condition  and a treatment plan only if such provided by the doctor.\n
+                    For conditions that are already documented: include current condition name and icd code, only include *new text that will be appended* to the existing documentation if such exist. state that the condition is already documeted in the relevant flag field.\n\n
                     Use only the following information:\n\n
-                    {combined_text}.\n\n
-                    Do not add any physical exam, result, diagnosis, or assamet and plan information that is not provided explicitly in the input data.
+                    {combined_text}.\n\n\n\n
+                    Do not add any physical exam, result, diagnosis, or assamet and plan information that is not provided explicitly in the input data by the doctor.
                     """
                 }
             ],

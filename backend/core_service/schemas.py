@@ -108,9 +108,12 @@ class AssessmentAndPlan(BaseModel):
     title: Optional[str] = Field(
         None, description="The title of the chosen condition. defaults to '[condition.name] ([condition.icd_code])'."
     )
-    plan: str = Field(
-        ..., description="The treatment or follow-up plan for the condition."
+    assessment_and_plan: str = Field(
+        ...,
+        description="The current condition assessment and treatment or follow-up plan for the condition if such provided."
     )
+    already_documented: bool = Field(False,
+                                     description="Whether the condition is already documented in the patient's record.")
 
     @model_validator(mode="before")
     def set_default_title(cls, values):
@@ -127,6 +130,12 @@ class AssessmentAndPlan(BaseModel):
 
 class RecommendationResponse(BaseModel):
     recommendations: List[AssessmentAndPlan]
+
+
+class DocumentedCondition(BaseModel):
+    condition: str
+    icd_code: str
+    current_anp: str
 
 
 class DocumentationResponse(BaseModel):
@@ -157,6 +166,7 @@ class Documentation(BaseModel):
 
 class DocumentationCreate(BaseModel):
     visit_id: str
+    current_conditions: List[DocumentedCondition]
 
 
 class DocumentationUpdate(BaseModel):
